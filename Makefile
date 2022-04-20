@@ -21,7 +21,7 @@ postgres-stop:
 
 dummy_event:
 	curl 'http://localhost:8000/api/event' \
-		-H 'X-Forwarded-For: 127.0.0.1' \
+		-H 'X-Forwarded-For: 85.253.195.125' \
 		-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36 OPR/71.0.3770.284' \
 		-H 'Content-Type: text/plain' \
 		--data-binary '{"n":"pageview","u":"http://dummy.site/some-page","d":"dummy.site","r":null,"w":1666}' \

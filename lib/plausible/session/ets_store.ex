@@ -1,4 +1,4 @@
-defmodule Plausible.Session.Store do
+defmodule Plausible.Session.EtsStore do
   use GenServer
   use Plausible.Repo
   require Logger
@@ -10,71 +10,54 @@ defmodule Plausible.Session.Store do
   end
 
   def init(opts) do
+    :ets.new(__MODULE__, [:named_table, :public, {:write_concurrency, true}])
+
     buffer = Keyword.get(opts, :buffer, Plausible.Session.WriteBuffer)
     timer = Process.send_after(self(), :garbage_collect, @garbage_collect_interval_milliseconds)
 
-    {:ok, %{timer: timer, sessions: %{}, buffer: buffer}}
+    {:ok, %{timer: timer, buffer: buffer}}
   end
 
-  def on_event(event, prev_user_id, pid \\ __MODULE__) do
-    GenServer.call(pid, {:on_event, event, prev_user_id})
-  end
-
-  def handle_call(
-        {:on_event, event, prev_user_id},
-        _from,
-        %{sessions: sessions, buffer: buffer} = state
-      ) do
-    session_key = {event.domain, event.user_id}
-
+  def on_event(event, prev_user_id) do
     found_session =
-      sessions[session_key] || (prev_user_id && sessions[{event.domain, prev_user_id}])
+      find_session(event.domain, event.user_id) || find_session(event.domain, prev_user_id)
 
     active = is_active?(found_session, event)
 
-    updated_sessions =
+    session =
       cond do
         found_session && active ->
           new_session = update_session(found_session, event)
-          buffer.insert([%{new_session | sign: 1}, %{found_session | sign: -1}])
-          Map.put(sessions, session_key, new_session)
+          # buffer.insert([%{new_session | sign: 1}, %{found_session | sign: -1}])
+          persist_session(new_session)
 
         found_session && !active ->
           new_session = new_session_from_event(event)
-          buffer.insert([new_session])
-          Map.put(sessions, session_key, new_session)
+          # buffer.insert([new_session])
+          persist_session(new_session)
 
         true ->
           new_session = new_session_from_event(event)
-          buffer.insert([new_session])
-          Map.put(sessions, session_key, new_session)
+          # buffer.insert([new_session])
+          persist_session(new_session)
       end
 
-    session_id = updated_sessions[session_key].session_id
-    {:reply, session_id, %{state | sessions: updated_sessions}}
+    session.session_id
   end
 
-  def reconcile_event(sessions, event) do
-    session_key = {event.domain, event.user_id}
-    found_session = sessions[session_key]
-    active = is_active?(found_session, event)
+  defp find_session(_domain, nil), do: nil
 
-    updated_sessions =
-      cond do
-        found_session && active ->
-          new_session = update_session(found_session, event)
-          Map.put(sessions, session_key, new_session)
+  defp find_session(domain, user_id) do
+    case :ets.lookup(__MODULE__, {domain, user_id}) do
+      [{_id, session}] -> session
+      _ -> nil
+    end
+  end
 
-        found_session && !active ->
-          new_session = new_session_from_event(event)
-          Map.put(sessions, session_key, new_session)
-
-        true ->
-          new_session = new_session_from_event(event)
-          Map.put(sessions, session_key, new_session)
-      end
-
-    updated_sessions
+  defp persist_session(session) do
+    key = {session.domain, session.user_id}
+    :ets.insert(__MODULE__, {key, session})
+    session
   end
 
   defp is_active?(session, event) do
@@ -166,32 +149,21 @@ defmodule Plausible.Session.Store do
 
   def handle_info(:garbage_collect, state) do
     Logger.debug("Session store collecting garbage")
-    IO.puts("COLLETING GARBAGE NOW")
 
-    now = Timex.now()
-
-    new_sessions =
-      Enum.reduce(state[:sessions], %{}, fn {key, session}, acc ->
-        if Timex.diff(now, session.timestamp, :second) <= forget_session_after() do
-          Map.put(acc, key, session)
-        else
-          # forget the session
-          acc
-        end
-      end)
+    # now = Timex.now()
 
     Process.cancel_timer(state[:timer])
 
     new_timer =
       Process.send_after(self(), :garbage_collect, @garbage_collect_interval_milliseconds)
 
-    Logger.debug(fn ->
-      n_old = Enum.count(state[:sessions])
-      n_new = Enum.count(new_sessions)
-      "Removed #{n_old - n_new} sessions from store"
-    end)
+    # Logger.debug(fn ->
+    #   n_old = Enum.count(state[:sessions])
+    #   n_new = Enum.count(new_sessions)
+    #   "Removed #{n_old - n_new} sessions from store"
+    # end)
 
-    {:noreply, %{state | sessions: new_sessions, timer: new_timer}}
+    {:noreply, %{state | timer: new_timer}}
   end
 
   defp session_length_seconds(), do: Application.get_env(:plausible, :session_length_minutes) * 60

@@ -14,6 +14,7 @@ defmodule Plausible.Application do
       Plausible.Event.WriteBuffer,
       Plausible.Session.WriteBuffer,
       Plausible.Session.Store,
+      Plausible.Session.EtsStore,
       Plausible.Session.Salts,
       ReferrerBlocklist,
       {Oban, Application.get_env(:plausible, Oban)},
