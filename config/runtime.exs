@@ -420,6 +420,10 @@ config :logger,
   level: log_level,
   backends: [:console]
 
+config :opentelemetry,
+  span_processor: :batch,
+  exporter: {:otel_exporter_stdout, []}
+
 config :logger, Sentry.LoggerBackend,
   capture_log_messages: true,
   level: :error,

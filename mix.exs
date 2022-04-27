@@ -98,7 +98,9 @@ defmodule Plausible.MixProject do
       {:public_suffix, git: "https://github.com/axelson/publicsuffix-elixir"},
       {:floki, "~> 0.32.0", only: :test},
       {:referrer_blocklist, git: "https://github.com/plausible/referrer-blocklist.git"},
-      {:benchee, "~> 1.0", only: :dev}
+      {:benchee, "~> 1.0", only: :dev},
+      {:opentelemetry_api, "~> 1.0"},
+      {:opentelemetry, "~> 1.0"}
     ]
   end
 
